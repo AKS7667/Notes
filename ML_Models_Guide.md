@@ -2,6 +2,25 @@
 
 This guide walks through the major families of machine-learning models, from linear regression up through deep networks. For each model you get a formal definition, an intuitive picture, the math that defines it, the scikit-learn call (or the next-best library when scikit-learn doesn't ship it), and the parameters and hyperparameters that actually matter in practice. Throughout, I'll flag when each model is the right tool for the job. A "parameter" here is something the model *learns* from data; a "hyperparameter" is something *you* set before training. Scikit-learn's API blurs this — both are passed to the constructor — so I'll group both under the constructor arguments and label them by role.
 
+<br><br>
+
+# INDEX  
+---
+
+**[1. Linear Models](#1-linear-models)**  
+*[1.1 Linear Regression](#11-linear-regression-ordinary-least-squares)*  
+*[1.2 Ridge Regression (L2 - Regularized OLS)](#12-ridge-regression-l2-regularized-ols)*  
+*[1.3 Lasso (L1-regularized OLS)](#13-lasso-l1-regularized-ols)*  
+*[1.4 Elastic Net](#14-elastic-net)*  
+*[1.5 Logistic Regression](#15-logistic-regression)*  
+
+**[2. Distance Based Models ](#2-distance-based-models)**  
+*[2.1 K Nearest Neighbor (KNN) ](#21-k-nearest-neighbors-knn)*
+*[]()*
+*[]()*
+*[]()*
+
+
 ---
 
 ## 1. Linear Models
@@ -336,32 +355,273 @@ where $\nu$ is the learning rate. For squared loss, the negative gradient is jus
 ---
 
 ### 6.3 XGBoost
+**Formal definition.** A gradient boosting library that improves on basic gradient boosting in two ways: (1) it adds an explicit regularization penalty into the objective, and (2) it uses both first-derivative (gradient) and second-derivative (Hessian) information when building trees, rather than just gradients.
 
-**Formal definition.** A heavily engineered gradient boosting library. The objective adds an explicit regularization term and uses a second-order (Newton) approximation, not just first-order gradients.
+**Use it when** you want strong tabular performance with a battle-tested library. Workhorse of Kaggle and a sensible default for structured data problems like the F1 predictor. Pair with `GroupKFold` when rows share natural groupings (multiple drivers per race).
 
-**Math.** XGBoost minimizes
-$$\mathcal{L} = \sum_i \ell(y_i, \hat{y}_i) + \sum_m \Omega(h_m), \qquad \Omega(h) = \gamma T + \frac{1}{2}\lambda \|w\|^2$$
 
-where $T$ is the number of leaves and $w$ are the leaf scores. At each step it expands the loss to second order using gradients $g_i$ and Hessians $h_i$, giving the optimal leaf weight $w_j^* = -G_j / (H_j + \lambda)$ where $G_j$, $H_j$ sum gradients/Hessians in leaf $j$.
+## What It Is
+ XGBoost (Extreme Gradient Boosting) is a sequential ensemble learning method. You start with a dumb initial prediction (the mean of the target), then repeatedly build small decision trees, each one trained to correct the errors (residuals) of everything before it.  
+After $T$ rounds, the prediction for sample $i$ is:
+$$\hat{y}_i = \bar{y} + \eta \cdot f_1(x_i) + \eta \cdot f_2(x_i) + \cdots + \eta \cdot f_T(x_i)$$
 
-**Library.** `xgboost` (sklearn-compatible API): `XGBClassifier`, `XGBRegressor`, `XGBRanker`.
+> where each $f_t$ is a decision tree and $\eta$ is the learning rate (shrinkage).
 
-**Hyperparameters.**
-- `n_estimators`: boosting rounds.
-- `learning_rate` (a.k.a. `eta`): shrinkage.
-- `max_depth`: tree depth (commonly 4–10).
-- `min_child_weight`: minimum sum of Hessians in a child (regularizer).
-- `gamma`: minimum loss reduction to split (the $\gamma$ in $\Omega$).
-- `subsample`: row sampling per tree.
-- `colsample_bytree`, `colsample_bylevel`, `colsample_bynode`: column sampling at different granularities.
-- `reg_alpha`: L1 on leaf weights.
-- `reg_lambda`: L2 on leaf weights (the $\lambda$ in $\Omega$).
-- `scale_pos_weight`: for class imbalance.
-- `tree_method` (`'hist'`, `'approx'`, `'exact'`, `'gpu_hist'`): how splits are found. `'hist'` is the modern default.
-- `early_stopping_rounds` (with an eval set): stop if validation hasn't improved.
-- `objective`: `'reg:squarederror'`, `'binary:logistic'`, `'multi:softprob'`, `'rank:pairwise'`, etc.
 
-**Use it when** you want state-of-the-art tabular performance with a battle-tested library. This is the workhorse of Kaggle and a sensible default for your F1 predictor. Pair with `GroupKFold` when you have race-level groupings — exactly what you've been doing.
+
+## How a Single Tree Works
+
+A decision tree asks sequential yes/no questions to partition data into groups called **leaves**. Each leaf holds a group of training samples and outputs one number — the **leaf weight** $w_j$ — which is the prediction for all samples in that leaf.
+
+```
+                All 400 drivers
+                (avg position: 10.5)
+                    |
+            grid_position ≤ 5?
+            /              \
+        YES                NO
+    80 drivers          320 drivers
+    (avg pos: 3.2)      (avg pos: 12.3)
+        |                    |
+    wet = true?        grid_position ≤ 15?
+    /      \             /          \
+    YES      NO          YES          NO
+20 drv    60 drv      200 drv      120 drv
+(avg 4.8) (avg 2.7)   (avg 10.1)  (avg 15.9)  ← these are leaves
+```
+
+**Depth** is the number of questions from root to leaf. Depth controls interaction order — depth 1 can only use one feature, depth 6 can capture six-way interactions like "grid ≤ 3 AND dry AND constructor = Red Bull AND ..."
+
+---
+
+## How Boosting Works — Step by Step
+
+**Round 0:** Predict the mean for everyone: $\hat{y}_i^{(0)} = 10.5$
+
+| Driver | Actual | Prediction | Residual |
+|--------|--------|------------|----------|
+| Hamilton | 2 | 10.5 | −8.5 |
+| Verstappen | 1 | 10.5 | −9.5 |
+| Latifi | 18 | 10.5 | +7.5 |
+
+**Round 1:** Build a tree that predicts the **residuals**, not the original target. The tree learns patterns like "front-starters were underpredicted." Each leaf computes an optimal correction using:
+
+$$w_j^* = -\frac{\sum_{i \in \text{leaf}_j} g_i}{\sum_{i \in \text{leaf}_j} h_i + \lambda}$$
+
+For squared error: $g_i = \hat{y}_i - y_i$ (the residual), $h_i = 1$. So this simplifies to: sum of residuals / (count + λ).
+
+Update predictions: $\hat{y}_i^{(1)} = \hat{y}_i^{(0)} + \eta \cdot f_1(x_i)$
+
+**Round 2, 3, ... T:** Compute new residuals from updated predictions. Build another tree on those residuals. Add it to the running sum. Each round nudges predictions closer to truth.
+
+---
+
+## What "Gradient" and "Hessian" Mean Here
+
+For squared error loss $\ell = \frac{1}{2}(\hat{y}_i - y_i)^2$:
+
+**Gradient** $g_i = \hat{y}_i - y_i$ — the first derivative. It's just the residual: direction and magnitude of the error.
+
+**Hessian** $h_i = 1$ — the second derivative. For squared error this is always 1, which is why the leaf weight formula simplifies to "sum of residuals / (count + λ)."
+
+The Hessian becomes interesting with other loss functions (e.g. logistic loss for classification, where $h_i$ varies per sample). XGBoost uses both gradient and Hessian so it works with any twice-differentiable loss — this is what makes it "second-order" and distinguishes it from plain gradient boosting.
+
+---
+
+## The Role of the Taylor Expansion
+
+The Taylor expansion is **not** part of the objective. The actual objective XGBoost minimizes is:
+
+$$\mathcal{L} = \underbrace{\sum_i \ell(y_i, \hat{y}_i)}_{\text{exact loss}} + \underbrace{\sum_m \Omega(f_m)}_{\text{regularization}}$$
+
+The Taylor expansion is an internal shortcut used *during tree construction*. When XGBoost asks "how much will the loss change if I add this tree?", evaluating the exact answer for every possible tree is intractable. So it approximates the change using a second-order Taylor expansion, which lets it derive the closed-form leaf weight formula above. Once the tree is built and added, the next round uses exact residuals again.
+
+$$\Omega(f) = \gamma T + \frac{1}{2}\lambda \sum_{j=1}^{T} w_j^2$$
+
+where $T$ is the number of leaves in the tree, $w_j$ is the weight (output value) of leaf $j$, $\gamma$ penalizes having more leaves (discourages complex trees), and $\lambda$ penalizes large leaf weights (shrinks extreme corrections toward zero).
+
+
+**Interview-level answer:** "The leaf weight formula is the closed-form solution you get from minimizing the second-order approximation of the loss plus the regularization penalty." You don't need to derive it.
+
+---
+
+## Regularization — What It Is and Why It Matters
+
+**Overfitting** means the model memorizes noise in the training data. Example: a safety car at one race caused a driver to gain 5 positions — a one-off event. If a tree builds a leaf capturing only that race, it learns a rule it'll incorrectly apply to future races.
+
+**Regularization** is anything that prevents this by making the model pay a cost for complexity. XGBoost has four independent regularization knobs, each fighting overfitting from a different angle: (1) Lambda(`reg_lambda`) shrinks the numerical output of each leaf to avoid overfitting(2) Max number of leaves per tree (`max_depth`) - limits tree complexity from the top, overtly complex trees overfit (3) `min_child_weight` - minimum samples per leaf - limits complexity from the bottom (how many samples justify a new leaf) (4) `subsample` or `colsample_bytree` - randomizing what each tree sees so errors decorrelate and cancel out when averaged. 
+
+---
+
+## Hyperparameters — What Each Does and Why
+
+### `learning_rate` (η) — shrinkage per tree
+
+**What it does:** Multiplies each tree's contribution by a small number (e.g. 0.05). Each tree only gets to make a 5% correction.
+
+**Effect:** Increases training error — each tree undercorrects.
+
+**Why that's good:** Forces the model to need many rounds to converge. Patterns that are real keep getting reinforced across rounds. One-off noise from a single tree gets diluted by hundreds of subsequent trees. Smaller η = better generalization, but need more trees (slower training).
+
+### `n_estimators` — number of trees
+
+**What it does:** Maximum number of boosting rounds (trees).
+
+**Effect:** More trees = more chances to correct residuals = lower training error.
+
+**Why to be careful:** Too many trees and the model starts correcting noise. Set this high and use early stopping to automatically find the right number.
+
+### `max_depth` — tree complexity from the top
+
+**What it does:** Limits how many sequential questions each tree can ask.
+
+**Effect:** Restricts the interaction order the model can learn. Depth 6 = up to 6-way feature interactions.
+
+**Why that's good:** Shallow trees are weak learners that can't memorize specific races. Deeper trees are powerful enough to overfit individual data points. Depth 4–8 is typical.
+
+### `min_child_weight` — tree complexity from the bottom
+
+**What it does:** Minimum number of samples required in a leaf (for squared error where $h_i = 1$).
+
+**Effect:** Prevents the tree from creating leaves based on very few data points.
+
+**Why that's good:** A leaf with 1 sample is memorizing that sample. A leaf with 50 samples has found a real pattern. Setting this to 3–5 filters out noise-driven splits.
+
+### `reg_lambda` (λ) — L2 regularization on leaf weights
+
+**What it does:** Inflates the denominator of the leaf weight formula, shrinking every leaf's output toward zero.
+
+Without λ: $w = \text{sum of residuals} / \text{count}$ (the raw mean residual)
+
+With λ: $w = \text{sum of residuals} / (\text{count} + \lambda)$
+
+**Effect:** Deliberately increases training error — every tree undercorrects.Without it, leaves have to fit large corrections and large corrections are usually fitting noise. 
+
+**Why that's good:** Leaves with few samples get shrunk the most (adding λ to 3 is a 33% increase; adding λ to 300 is a 0.3% increase). This disproportionately dampens the corrections most likely to be noise. The subsequent trees then pick up whatever consistent signal remains — but one-off noise doesn't persist across rounds, so it gets filtered out naturally.
+
+**Example with 3 samples summing to residual −24:**
+
+| λ | Leaf weight | Effect |
+|---|------------|--------|
+| 0 | −24/3 = −8.0 | Full correction, possible overfitting |
+| 1 | −24/4 = −6.0 | Moderate shrinkage |
+| 10 | −24/13 = −1.85 | Heavy shrinkage, very conservative |
+
+### `reg_alpha` — L1 regularization on leaf weights
+
+**What it does:** Penalizes the absolute value of leaf weights (not squared).
+
+**Effect:** Can push some leaf weights to exactly zero (sparsity).
+
+**Why that's good:** Effectively prunes irrelevant leaves — if a leaf's correction is tiny, L1 kills it entirely.
+
+### `gamma` (γ) — minimum split gain
+
+**What it does:** A split is only allowed if it reduces the loss by at least γ.
+
+**Effect:** Fewer splits = simpler trees.
+
+**Why that's good:** Prevents marginal splits that barely improve training loss but add complexity.
+
+### `subsample` — row subsampling
+
+**What it does:** Each tree sees a random fraction (e.g. 80%) of the training rows.
+
+**Effect:** Different trees overfit to different noise. When you average predictions across hundreds of trees, the noise cancels out and the signal remains.
+
+**Why that's good:** Reduces **variance** (how much predictions change with different training data). Without subsampling, every tree sees the same outlier race and every tree tries to fit it — the ensemble's mistakes are correlated. With subsampling, tree #47 might miss that outlier entirely while tree #112 misses a different one. Decorrelated errors average out.
+
+### `colsample_bytree` — column subsampling
+
+**What it does:** Each tree only gets a random fraction of features to consider.
+
+**Effect:** Prevents dominant features (like `grid_position`) from appearing at the root of every tree.
+
+**Why that's good:** Forces the model to discover signal in weaker features. Creates a more diverse ensemble where different trees rely on different feature subsets.
+
+### `tree_method` — how splits are found
+
+**What it does:** Controls the algorithm for finding the best split point at each node.
+
+- `exact`: evaluates every unique feature value as a candidate — accurate but slow.
+- `hist`: bins features into ~256 histogram buckets, only evaluates bin boundaries — 5-10x faster with negligible accuracy loss. Modern default.
+
+### `early_stopping_rounds` — automatic n_estimators selection
+
+**What it does:** Monitors validation loss during training. If it hasn't improved for N rounds, stop.
+
+**Why that's good:** You set `n_estimators` high (e.g. 2000) and let early stopping pick the actual best round. No risk of under- or over-training.
+
+### `verbosity` — logging level
+
+0 = silent, 1 = warnings only, 2 = info, 3 = debug.
+
+### `random_state` — reproducibility
+
+Seeds the RNG. Without it, row/column subsampling and tie-breaking give slightly different results each run.
+
+### `objective` - Loss Function
+ loss function that defines $g_i$ and $h_i$. `'reg:squarederror'`, `'binary:logistic'`, `'multi:softprob'`, `'rank:pairwise'`, etc.
+
+---
+## XGBoost Loss Functions
+**Regression** (predicting a continuous number):
+- `reg:squarederror` — default, penalizes large errors heavily. Use for most regression tasks (F1 finishing position, house prices, stock returns).
+- `reg:squaredlogerror` — squared error on log-transformed predictions. Use when you care about relative error and targets are positive with large range (e.g. predicting revenue where being off by $100 matters more at $500 than at $50,000).
+- `reg:absoluteerror` — MAE loss, penalizes all errors equally. Use when you have outliers you don't want to dominate training (e.g. if DNFs cause extreme residuals).
+
+**Binary classification** (yes/no, 0/1):
+- `binary:logistic` — outputs a probability between 0 and 1. Use for most two-class problems (will this driver DNF? win/lose prediction).
+
+**Multiclass classification** (one of N categories):
+- `multi:softmax` — outputs the predicted class label directly. Use when you just need the answer.
+- `multi:softprob` — outputs probabilities for each class. Use when you need confidence scores (e.g. "60% chance this is a pit strategy A, 30% B, 10% C").
+
+**Ranking** (ordering items relative to each other):
+- `rank:pairwise` — learns to rank items correctly relative to each other within a group. This is arguably the most correct framing for F1 — you care about finishing *order* within a race, not the exact position number.
+- `rank:ndcg` — optimizes NDCG (normalized discounted cumulative gain), which weights getting the top positions right more heavily than the bottom. Use for search results or recommendations where top-k accuracy matters most.
+
+**Count data:**
+- `count:poisson` — for predicting counts (number of pit stops, number of overtakes). Assumes the target follows a Poisson distribution.
+
+**Survival analysis:**
+- `survival:cox` — for time-to-event data (how long until engine failure, customer churn).
+
+> XGBoost specifically requires the loss function to be twice differentiable because it needs both gig_i
+gi​ and hih_i
+hi​. That's why you won't find something like 0-1 loss (correct or wrong, no gradient) in XGBoost — there's no smooth derivative to work with.
+
+---
+## The Regularization Mental Model
+
+All four knobs fight overfitting from different angles:
+
+| Knob | Controls | Mechanism |
+|------|----------|-----------|
+| `max_depth` | Tree complexity from top | Limits interaction order |
+| `min_child_weight` | Tree complexity from bottom | Prevents small-sample leaves |
+| `reg_lambda` | Leaf weight magnitude | Shrinks corrections, especially in small leaves |
+| `subsample` / `colsample_bytree` | What each tree sees | Decorrelates trees so noise cancels out |
+
+Using all at moderate values is almost always better than cranking one to an extreme. They're complementary — each catches a different kind of overfitting.
+
+---
+
+## Why XGBoost Over Alternatives (for tabular data like F1 prediction)
+
+**Linear/Logistic Regression:** Cannot capture non-linear interactions (grid × track × weather) without heavy manual feature engineering. Too rigid.
+
+**Random Forests:** Handle non-linearity but average independent trees. Boosting sequentially corrects residuals, which fits noisy regression better. RF is an acceptable baseline; XGBoost almost always beats it on tabular data.
+
+**Neural Networks (MLP, TabNet):** Need much more data than F1 provides (~20 races/season). Per Shwartz-Ziv & Armon (2022), gradient boosting still wins on small-to-medium tabular datasets.
+
+**LightGBM / CatBoost:** Genuinely competitive. XGBoost is chosen for mature ecosystem, native missing-value handling, and easy SHAP integration. LightGBM is a planned A/B comparison.
+
+---
+
+## Key Insight to Remember
+
+Lambda (and the learning rate) deliberately **increase training error**. Each tree undercorrects. But patterns that are real keep showing up in the residuals round after round, so subsequent trees reinforce them. One-off noise doesn't persist across rounds, so it naturally gets filtered out. That's the core mechanism: regularization + many rounds = noise dies, signal survives.
 
 ---
 
