@@ -599,7 +599,7 @@ All four knobs fight overfitting from different angles:
 | Knob | Controls | Mechanism |
 |------|----------|-----------|
 | `max_depth` | Tree complexity from top | Limits interaction order |
-| `min_child_weight` | Tree complexity from bottom | Prevents small-sample leaves |
+| `min_child_weight` | Tree complexity from bottom  Prevents small-sample leaves |
 | `reg_lambda` | Leaf weight magnitude | Shrinks corrections, especially in small leaves |
 | `subsample` / `colsample_bytree` | What each tree sees | Decorrelates trees so noise cancels out |
 
