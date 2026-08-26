@@ -481,11 +481,13 @@ where $T$ is the number of leaves in the tree, $w_j$ is the weight (output value
 
 ### `min_child_weight` — tree complexity from the bottom
 
-**What it does:** Minimum number of samples required in a leaf (for squared error where $h_i = 1$).
+**What it does:** Minimum Sum of Hessians required for a node split.With objective as `reqressionsqrd` it is simply the number of samples required in a leaf (because $h_i = 1$ for all rows).
 
-**Effect:** Prevents the tree from creating leaves based on very few data points.
+**Effect:** Blocks splits that would create a leaf with too little Hessian mass — i.e. too little statistical evidence. For squared error this is a floor on sample count; for other objectives (e.g. logistic) it's a floor on total curvature/uncertainty, since $h_i$ then varies per row.
 
-**Why that's good:** A leaf with 1 sample is memorizing that sample. A leaf with 50 samples has found a real pattern. Setting this to 3–5 filters out noise-driven splits.
+**Why that's good:** A leaf backed by little Hessian mass is fitting too few informative rows — memorizing rather than generalizing. Requiring more mass per leaf forces each split to be supported by enough signal, filtering out noise-driven splits. Higher value → fewer, larger leaves → more regularization.
+
+**Typical range:** 1–10; try 3–5 as a starting point for noise control.
 
 ### `reg_lambda` (λ) — L2 regularization on leaf weights
 
@@ -1018,6 +1020,10 @@ Clustering: `silhouette_score`, `adjusted_rand_score`, `normalized_mutual_info_s
 
 **`permutation_importance`** — model-agnostic feature importance by shuffling each feature and measuring performance drop. More reliable than tree built-in importances when features have different scales or cardinalities.
 
+### 12.12 Spearman and Pearson COrrelation for Ranking 
+Pearson high → strong linear relationship. The points hug a straight line.
+Spearman high → strong monotonic relationship. As one goes up the other consistently goes up — but not necessarily along a straight line. Any consistently-increasing curve scores near 1.
+
 ---
 
-That's the landscape. For a typical interview talking-point flow: start with what the model *is* (formal + intuitive), why you'd pick it (data shape, size, interpretability, training speed), the key hyperparameters and how they trade off bias and variance, and how you validate it without leaking — which for grouped data like races means `GroupKFold`, exactly the choice you've already made.
+
