@@ -1,5 +1,7 @@
 # XGBoost: The Full Math, Built From Scratch
 
+[This](https://www.aryanupadhyay.com/post/the-core-math-behind-xgboost) is another alternate reference.  
+
 Every formula derived, every variable defined next to what it *means*, and a worked numerical example that shows the machine running.
 
 ---
@@ -125,6 +127,7 @@ $$\boxed{\;\text{Obj}(w_j) = G_j\, w_j + \tfrac12 (H_j + \lambda)\, w_j^2\;}$$
 
 ## 6. Optimal leaf weight $w_j^*$
 
+> $\lambda$ is a regularization control set by us on the model. High lambda shrinks the weight, controls how large the outputs can be. 
 $\text{Obj}(w_j)$ is an upward parabola (coefficient $H_j + \lambda > 0$), so it has one minimum. Differentiate, set to zero:
 
 $$\frac{\partial\, \text{Obj}}{\partial\, w_j} = G_j + (H_j + \lambda)\, w_j = 0$$
