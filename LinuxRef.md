@@ -947,6 +947,24 @@ git push origin --delete Main
 ```
 The order matters: you can't delete `Main` until `main` is the default on GitHub, so switch the default (step 4) before deleting (step 5).
 
+### "The current branch main has multiple upstream branches, refusing to push"
+Different from the case above — this one is a local **config** problem, not two branches on GitHub. Your local `main` has more than one push destination configured (often a leftover `refs/heads/Main` *and* `refs/heads/main`), so Git won't guess which to push to. Reset the upstream to a single branch:
+
+```bash
+# See what's configured (you'll usually spot a duplicate line)
+git config --get-all branch.main.merge
+git config --get-all remote.origin.push
+
+# Clear the tangled tracking config, then re-set it to exactly one branch
+git branch --unset-upstream
+git push -u origin main          # re-establishes a single upstream
+
+# If it STILL complains, a multi-value push refspec is the culprit:
+git config --unset-all remote.origin.push
+git push -u origin main
+```
+After this, plain `git push` works again.
+
 ### "fatal: not a git repository"
 You're not inside a Git repo. Either `cd` into your project folder, or run `git init` to start tracking the current folder.
 
