@@ -550,18 +550,18 @@ A practical reference for setting up, using, and troubleshooting Git and GitHub.
 ---
 
 ## Table of Contents
-1. [Core Concepts](#core-concepts)
-2. [First-Time Setup](#first-time-setup)
-3. [Creating a Repo From Scratch](#creating-a-repo-from-scratch)
-4. [Cloning an Existing Repo](#cloning-an-existing-repo)
-5. [The Daily Workflow](#the-daily-workflow)
-6. [Understanding Branches](#understanding-branches)
-7. [Understanding `git checkout`](#understanding-git-checkout)
-8. [Remotes: origin, upstream, and renaming](#remotes)
-9. [Working on Multiple Projects](#working-on-multiple-projects)
-10. [Useful Commands Beyond the Basics](#useful-commands)
-11. [Common Errors and Fixes](#common-errors-and-fixes)
-12. [Rewriting Git History](#rewriting-git-history)
+1. [Core Concepts](#1-core-concepts)
+2. [First-Time Setup](#2-first-time-setup)
+3. [Creating a Repo From Scratch](#3-creating-a-repo-from-scratch)
+4. [Cloning an Existing Repo](#4-cloning-an-existing-repo)
+5. [The Daily Workflow](#5-the-daily-workflow)
+6. [Understanding Branches](#6-understanding-branches)
+7. [Understanding `git checkout`](#7-understanding-git-checkout)
+8. [Remotes: origin, upstream, and renaming](#8-remotes)
+9. [Working on Multiple Projects](#9-working-on-multiple-projects)
+10. [Useful Commands Beyond the Basics](#10-useful-commands)
+11. [Common Errors and Fixes](#11-common-errors-and-fixes)
+12. [Rewriting Git History](#12-rewriting-git-history)
 
 ---
 
