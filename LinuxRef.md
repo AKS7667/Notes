@@ -581,6 +581,11 @@ A practical reference for setting up, using, and troubleshooting Git and GitHub.
 ---
 
 ## 2. First-Time Setup
+
+**First, what "authenticating" means.** GitHub needs proof it's really you before it lets you read a private repo or push changes. There are two ways to give that proof: an **SSH key** (a secret file on your machine that GitHub recognizes automatically) or **HTTPS + a token** (a generated password-like string you enter when asked).
+
+**Which to use.** On Windows, HTTPS-with-a-token works smoothly because Git remembers the token for you. On Linux/WSL there's no built-in "remember" by default, so SSH is the easier path — set the key up once and every clone/pull/push just works, with nothing to re-enter. The sections below follow that: HTTPS-style on Windows, SSH on Linux.
+
 ### Windows
 Run these once after installing Git:
 
@@ -600,38 +605,57 @@ gh auth login
 Or use a Personal Access Token (PAT) — generate one at GitHub → Settings → Developer Settings → Personal Access Tokens.
 
 ### Linux 
-Get git on your system
+Get git on your system. *Updates your package list, then installs Git itself.*
 ```bash
 sudo apt-get update
 sudo apt-get install git
 ```
 
+Set your name and email. *Git stamps every commit with these, so GitHub knows who made each change.*
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your@email.com"
 ```
 
+**Do you already have a key?** *Lists your SSH folder. If you see `id_ed25519` and `id_ed25519.pub`, you already have a key — skip making a new one and reuse it.*
+```bash
+ls ~/.ssh
+```
+
+Make an SSH key. *Creates a matched pair of keys — a private one that stays secret on your machine and a public one you give to GitHub. Together they prove it's you, so you don't type a password every time.*
 ```bash
 ssh-keygen -t ed25519 -C "your@email.com"
 ```
 hit enter twice (or add optional passphrase)
 
-Start ssh agent and add key
+Start ssh agent and add key. *Turns on the helper that holds your key while you work, then loads your key into it.*
 ```bash
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
 ```
-copy your key - 
+Copy your **public** key. *Copies the public key (the `.pub` one — safe to share) to your clipboard. `clip.exe` puts it on the Windows clipboard; it's not saved as a file, just ready to paste.*
 ```bash
 cat ~/.ssh/id_ed25519.pub | clip.exe
 ```
-Then on GitHub: Settings → SSH and GPG Keys → New SSH Key → paste → Save
+Then on GitHub: Settings → SSH and GPG Keys → New SSH Key → paste → Save. **This step is required — a key does nothing until GitHub has the public half.** You only post the `.pub` (public) key; the private one (`id_ed25519`, no `.pub`) never leaves your machine.
 
-Test the connection and authenticate github.com - 
+Test the connection. *Asks GitHub "do you recognize my key?" A reply of "Hi `<username>`!..." means the key works and is registered. Run this anytime to confirm your key is set up.*
 ```bash
 ssh -T git@github.com
 ```
+
+> **When do you actually need the key?** Reading a **public** repo (`git clone`) needs no key. Reading a **private** repo, and **pushing** to *any* repo you own, both need the key. So auth usually only "gets stuck" on private repos or on pushing.
+
 Note when cloning on Linux, you will have to use the ssh link (find it on thr right hand side in your repo, in a greenbox that says "<> code", and click ssh, and use that link to clone)
+
+### FYI: alternatives to SSH on Linux/WSL (only if curious)
+SSH (above) is recommended and the simplest. But if you ever use HTTPS + a token instead, Linux/WSL won't remember the token on its own — you'd add one of these so you don't retype it constantly:
+
+- `git config --global credential.helper cache` — remembers the token in memory for ~15 minutes, then asks again.
+- `git config --global credential.helper store` — remembers it forever, but saves it as plain text in `~/.git-credentials` (fine on a personal machine, not a shared one).
+- Borrow Windows' built-in manager from WSL — stores the token securely on the Windows side (path varies by Git install): `git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"`
+
+None of this is needed if you use SSH — the key handles everything.
 ---
 
 ## 3. Creating a Repo From Scratch
