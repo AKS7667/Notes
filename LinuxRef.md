@@ -923,13 +923,37 @@ git pull --rebase    # Pull their changes and replay yours on top
 git push
 ```
 
+### Push refused — two remote branches differ only by capitalization (`Main` vs `main`)
+Git treats branch names as case-sensitive, so `Main` and `main` can both exist on GitHub as two separate branches. If your local `main` ends up tracking both, Git doesn't know which one to push to and refuses. No new commands — just string together `fetch`, `merge`, `push`, and the remote-branch delete you already know:
+
+```bash
+# 1. Make sure both remote branches are fetched
+git fetch origin
+
+# 2. Merge the stray branch into the one you want to keep
+git checkout main
+git merge origin/Main
+# If Git complains about unrelated histories, force it:
+# git merge origin/Main --allow-unrelated-histories
+
+# 3. Push the combined result
+git push origin main
+
+# 4. On GitHub: Settings → Branches → set the default branch to 'main'
+#    (GitHub blocks deleting a branch while it is still the default)
+
+# 5. Delete the stray 'Main' on GitHub
+git push origin --delete Main
+```
+The order matters: you can't delete `Main` until `main` is the default on GitHub, so switch the default (step 4) before deleting (step 5).
+
 ### "fatal: not a git repository"
 You're not inside a Git repo. Either `cd` into your project folder, or run `git init` to start tracking the current folder.
 
 ### "fatal: remote origin already exists"
 ```bash
 git remote set-url origin https://github.com/yourname/repo.git
-
+```
 
 ### Accidentally committed to the wrong branch
 ```bash
@@ -1020,6 +1044,7 @@ git branch --show-current       # shows current branch you are
 git rev-parse --show-toplevel   # shows complete path 
 git remote get-url origin       # gets origin's url
 ```
+
 
 <br><br> <br>
 
